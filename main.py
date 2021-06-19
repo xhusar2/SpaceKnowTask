@@ -1,11 +1,14 @@
 from Client import Client
+from dotenv import load_dotenv
+import os
 
 coords = "over_brisbane_airport.geojson"
 time_range = ["2018-01-01 00:00:00", "2018-01-31 23:59:59"]
 #TODO make as input arguments (coords to path to GEOJson file)
 
 def main():
-    client = Client()
+    load_dotenv()
+    client = Client(os.getenv("SPACEKNOW_EMAIL"), os.getenv("SPACEKNOW_PASSWORD") )
     client.download_images(time_range, coords)
 
 
