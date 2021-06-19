@@ -51,14 +51,23 @@ class Client:
                    "extent": extent}
         if cursor != '':
             payload['cursor'] = cursor
-        print(geojson.dumps(payload, indent=4))
+        # print(geojson.dumps(payload, indent=4))
         return payload
 
     def download_images(self, time_range, geometry):
-        payload = self.prepare_payload(geometry, time_range)
         search_url = '/imagery/search/initiate'
-        response = requests.post(self.URL + search_url, json=payload)
-        print(response.text)
+        payload = self.prepare_payload(geometry, time_range)
+        headers = {"Authorization": "Bearer " + self.token}
+        # initialize pipeline
+        response = requests.post(self.URL + search_url, json=payload, headers=headers)
+        next_try, pipeline_id, status = response['nextTry'], response['pipelineId'], response['status']
+
+        if status == 'FAILED':
+            print("Pipeline initialization failed!")
+            return []
+
+
+
 
     def analyze_images(self, images):
         pass
