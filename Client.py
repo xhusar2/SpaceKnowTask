@@ -35,11 +35,17 @@ class Client:
         print('Successfuly authorized!')
         return True
 
-    # TODO sort out provider and dataset params better, add cursor
-    def prepare_payload(self, coords_file, time_range, provider='gbdx'):
-        with open(coords_file) as f:
+    def get_extent(self, geojson_file):
+        with open(geojson_file) as f:
             gj = geojson.load(f)
-        extent = gj
+        return gj
+
+    def get_headers(self):
+        return {"Authorization": "Bearer " + self.token}
+
+    # TODO sort out provider and dataset params better, add cursor
+    def prepare_payload(self, geojson_file, time_range, provider='gbdx'):
+        extent = self.get_extent(geojson_file)
         cursor = ''
         dataset = self.providers[provider][2]
         start_datetime = time_range[0]
@@ -54,33 +60,46 @@ class Client:
         # print(geojson.dumps(payload, indent=4))
         return payload
 
-    def download_scenes(self, time_range, geometry):
-        initiate_pipeline_url = '/imagery/search/initiate'
-        retrieve_pipeline_url = '/imagery/search/retrieve'
-        payload = self.prepare_payload(geometry, time_range)
-        headers = {"Authorization": "Bearer " + self.token}
-        # initialize pipeline
-        response = json.loads(requests.post(self.URL + initiate_pipeline_url, json=payload, headers=headers).text)
+    def run_pipeline(self, url, payload):
+        # TODO implement retrieval when cursor not null (concaternate to results)
+        # init
+        response = json.loads(requests.post(self.URL + url + '/initiate', json=payload, headers=self.get_headers()).text)
         next_try, pipeline_id, status = response['nextTry'], response['pipelineId'], response['status']
-
+        # retrieve
         while status not in ['RESOLVED', 'FAILED']:
             # check status
             print(f'Pipeline status: {status}')
             status_check_url = "/tasking/get-status"
             print(f'Waiting {next_try} seconds...')
             time.sleep(next_try)
-            status = json.loads(requests.post(self.URL + status_check_url, json={"pipelineId":pipeline_id}).text)['status']
+            status = json.loads(requests.post(self.URL + status_check_url, json={"pipelineId": pipeline_id}).text)[
+                'status']
 
         if status == 'FAILED':
             print("Pipeline initialization failed!")
             return []
-        else:
+        elif status == 'RESOLVED':
             # retrieve scenes
-            result_scenes = json.loads(requests.post(self.URL + retrieve_pipeline_url, json={"pipelineId": pipeline_id}, headers=headers).text)
+            result_scenes = json.loads(
+                requests.post(self.URL + url + '/retrieve', json={"pipelineId": pipeline_id}, headers=self.get_headers()).text)
             print(json.dumps(result_scenes, indent=4))
+            # TODO implement retrieval when cursor not null (concaternate to results)
+        else:
+            print("Unexpected status for pipeline.")
         return result_scenes
 
+    # TODO cover exceptions - wrap into try block
+    def find_scenes(self, time_range, geometry):
+        pipeline_url = '/imagery/search'
+        payload = self.prepare_payload(geometry, time_range)
+        scenes = self.run_pipeline(pipeline_url, payload)['results']
+        return scenes
 
-
-    def analyze_images(self, images):
-        pass
+    def analyze_images(self, scenes, geojson_file, map_type="cars"):
+        kraken_url = f'/kraken/release/{map_type}/geojson'
+        results = {}
+        for scene in scenes:
+            payload = {"sceneId": scene['sceneId'], "extent": self.get_extent(geojson_file)}
+            maps = self.run_pipeline(kraken_url, payload)
+            results[scene] = maps
+        return results
