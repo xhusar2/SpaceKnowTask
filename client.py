@@ -29,6 +29,7 @@ class Client:
     token = ''
 
     def __init__(self, email, password):
+        # TODO check if file exists
         with open("providers.yaml", "r") as ymlfile:
             self.providers = yaml.load(ymlfile, Loader=yaml.FullLoader)
         try:
@@ -51,7 +52,7 @@ class Client:
         }
         response = requests.post(self.AUTHENTICATE_URL, json=payload)
         self.token = response.json()['id_token']
-        print('Successfuly authorized!')
+        print('Successfuly authentificated!')
         return True
 
     def get_extent(self, geojson_file):
