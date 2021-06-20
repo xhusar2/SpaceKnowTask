@@ -1,13 +1,16 @@
-import geojson
-import requests
-import time
-import json
-import shutil
-import os
-import cv2
-import numpy as np
 import functools
+import json
+import os
+import shutil
+import time
+import sys
+
+import cv2
+import geojson
+import numpy as np
+import requests
 import yaml
+from dotenv import load_dotenv
 
 DEBUG = True
 
@@ -251,3 +254,34 @@ class Client:
         shutil.rmtree(self.DOWNLOAD_FOLDER)
         os.mkdir(self.DOWNLOAD_FOLDER)
         return reconstructed_img
+
+coords = "over_brisbane_airport.geojson"
+time_range = ["2018-01-01 00:00:00", "2018-01-31 23:59:59"]
+# TODO make as input arguments (coords to path to GEOJson file)
+
+
+def main():
+    image_type = 'cars'
+    args = sys.argv[1:]
+    if len(args) == 3:
+        input_file = args[0]
+        timerange = [args[1], args[2]]
+    elif len(args) == 4:
+        input_file = args[0]
+        timerange = [args[1], args[2]]
+        image_type = args[3]
+    else:
+        print("Parameters for script: client.py <input_file> <timerange> [<image_type>]")
+        print("<input_file> - path to geojson with single geometry (required)  [<image_type>]")
+        print("<start_time> - timerange for analysis (required) (e.g. \"2018-01-01 00:00:00\"")
+        print("<end_time> - timerange for analysis (required) (e.g. \"2018-01-31 23:59:59\"")
+        print("[<image_type>] - analysis type (optional) 'cars' is default value")
+        exit(1)
+    load_dotenv()
+    client = Client(os.getenv("SPACEKNOW_EMAIL"), os.getenv("SPACEKNOW_PASSWORD"))
+    count = client.analyze_location(timerange, input_file, image_type)
+    print(f'Number of cars total in location for given timerange is {count}')
+
+
+if __name__ == "__main__":
+    main()
