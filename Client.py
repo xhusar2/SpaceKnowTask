@@ -62,10 +62,9 @@ class Client:
             imagery_img = self.recreate_image(scene, geojson_file, "imagery")
             detected_img = self.recreate_image(scene, geojson_file, map_type)
             # join images into one output
-            added_image = cv2.addWeighted(imagery_img, 0, detected_img, 1, 0)
+            added_image = cv2.addWeighted(imagery_img, 1, detected_img, 1, 0)
             timestr = time.strftime("%Y%m%d-%H%M%S")
-            cv2.imwrite(f'output/output_{scene["sceneId"][:20]}_{timestr}.png', added_image,
-                        [int(cv2.IMWRITE_PNG_COMPRESSION), 9])
+            cv2.imwrite(f'output/output_{scene["sceneId"][:20]}_{timestr}.png', added_image)
 
     # TODO sort out provider and dataset params better, add cursor
     def prepare_payload(self, geojson_file, time_range, provider='gbdx'):
@@ -144,7 +143,6 @@ class Client:
             print(f'File download failed for file from url {url}')
             return False
 
-    # TODO add sufix as filename (truecolor/
     def get_tile_image(self, image_type, map_id, identifier, coords):
         str_coords = [str(coord) for coord in coords]
         suffix_name = "truecolor" if image_type == "imagery" else image_type
@@ -156,9 +154,6 @@ class Client:
     # TODO handle exceptions (file not saved/downloaded)
     def recreate_image(self, scene, geojson_file, image_type="imagery"):
         grid = self.get_map(scene, geojson_file, image_type)
-        # clean download folder
-        shutil.rmtree(self.DOWNLOAD_FOLDER)
-        os.mkdir(self.DOWNLOAD_FOLDER)
         identifier = str(hash(grid['mapId']))[:10]
         # download and save grid tiles then concaternate them into one big png
         for tile in grid['tiles']:
@@ -190,4 +185,7 @@ class Client:
         # set background transparent
         #cv2.imwrite(f'output/output_{image_type}_{str.replace(map_id[:10], ".", "_")}_{identifier}.png',
         #            reconstructed_img, [int(cv2.IMWRITE_PNG_COMPRESSION), 9])
+        # clean download folder
+        shutil.rmtree(self.DOWNLOAD_FOLDER)
+        os.mkdir(self.DOWNLOAD_FOLDER)
         return reconstructed_img
