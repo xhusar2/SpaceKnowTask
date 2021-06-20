@@ -9,7 +9,7 @@ time_range = ["2018-01-01 00:00:00", "2018-01-31 23:59:59"]
 def main():
     load_dotenv()
     client = Client(os.getenv("SPACEKNOW_EMAIL"), os.getenv("SPACEKNOW_PASSWORD") )
-    client.download_images(time_range, coords)
+    client.download_scenes(time_range, coords)
 
 
 

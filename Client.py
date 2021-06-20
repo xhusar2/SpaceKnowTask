@@ -1,7 +1,7 @@
 import geojson
 import requests
-
-
+import time
+import json
 
 class Client:
     URL = 'https://api.spaceknow.com'
@@ -54,18 +54,31 @@ class Client:
         # print(geojson.dumps(payload, indent=4))
         return payload
 
-    def download_images(self, time_range, geometry):
-        search_url = '/imagery/search/initiate'
+    def download_scenes(self, time_range, geometry):
+        initiate_pipeline_url = '/imagery/search/initiate'
+        retrieve_pipeline_url = '/imagery/search/retrieve'
         payload = self.prepare_payload(geometry, time_range)
         headers = {"Authorization": "Bearer " + self.token}
         # initialize pipeline
-        response = requests.post(self.URL + search_url, json=payload, headers=headers)
+        response = json.loads(requests.post(self.URL + initiate_pipeline_url, json=payload, headers=headers).text)
         next_try, pipeline_id, status = response['nextTry'], response['pipelineId'], response['status']
+
+        while status not in ['RESOLVED', 'FAILED']:
+            # check status
+            print(f'Pipeline status: {status}')
+            status_check_url = "/tasking/get-status"
+            print(f'Waiting {next_try} seconds...')
+            time.sleep(next_try)
+            status = json.loads(requests.post(self.URL + status_check_url, json={"pipelineId":pipeline_id}).text)['status']
 
         if status == 'FAILED':
             print("Pipeline initialization failed!")
             return []
-
+        else:
+            # retrieve scenes
+            result_scenes = json.loads(requests.post(self.URL + retrieve_pipeline_url, json={"pipelineId": pipeline_id}, headers=headers).text)
+            print(json.dumps(result_scenes, indent=4))
+        return result_scenes
 
 
 
