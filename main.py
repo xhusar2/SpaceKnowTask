@@ -4,14 +4,14 @@ import os
 
 coords = "over_brisbane_airport.geojson"
 time_range = ["2018-01-01 00:00:00", "2018-01-31 23:59:59"]
-#TODO make as input arguments (coords to path to GEOJson file)
+# TODO make as input arguments (coords to path to GEOJson file)
+
 
 def main():
     load_dotenv()
     client = Client(os.getenv("SPACEKNOW_EMAIL"), os.getenv("SPACEKNOW_PASSWORD") )
-    client.analyze_location(time_range, coords, ['cars'])
+    client.analyze_location(time_range, coords, 'cars')
     # print(results)
-
 
 
 if __name__ == "__main__":

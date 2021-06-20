@@ -1,2 +1,6 @@
 /.env
 /download/*
+/tmp/*
+/tmp
+/output
+output/*
