@@ -65,6 +65,15 @@ class Client:
         return {"Authorization": "Bearer " + self.token}
 
     def analyze_location(self, time_range, geojson_file, image_type):
+        """
+        Function which tries to analyze given location in given time range.
+        Function returns number of detected objects and saves images with detected objects into the output file
+
+        :param time_range: range where images are queried
+        :param geojson_file: path to file with location
+        :param image_type: 'cars' or other type supported by Kraken API
+        :return: number of objects detected in images in total
+        """
         scenes = self.find_scenes(time_range, geojson_file)
         total_detected_objects = 0
         for i, scene in enumerate(scenes):
@@ -86,6 +95,16 @@ class Client:
         return total_detected_objects
 
     def detect_objects(self, scene, geojson_file, suffix_name, suffix_format, image_type):
+        """
+        Function tries to detect and count objects from location provided in geojson_file
+
+        :param scene: scene which is analyzed
+        :param geojson_file: path to file with location
+        :param suffix_name: for example 'imagery' or 'detections' (defined by API)
+        :param suffix_format: based on  suffinx_name (e.g .png or .geojson)
+        :param image_type: e.g 'cars' or 'imagery' (defined by API)
+        :return: number of detected objects in scene
+        """
         scene_objects_counter = 0
         # download geojson files for scene
         try:
@@ -108,6 +127,12 @@ class Client:
 
     @staticmethod
     def count_objects(gj, object_class):
+        """
+        Utility function to process geojson from Kraken response and count objects
+        :param gj: geojson from Kraken output
+        :param object_class: objects counted
+        :return: number of objects in geojson
+        """
         total_object_count = 0
         if "features" in gj:
             for feature in gj["features"]:
@@ -242,6 +267,15 @@ class Client:
         return recreated_image
 
     def concatenate_image(self, grid_tiles, map_id, identifier, image_type):
+        """
+        Utility function to concaternate grid tiles into one big png
+
+        :param grid_tiles: grid tiles
+        :param map_id: map id
+        :param identifier: to identify associated files together
+        :param image_type: e.g 'cars'
+        :return: concaternated image
+        """
         # sort coordinates
         sorted_coords = sorted(grid_tiles, key=lambda k: [k[1], k[2]])
         row_coords = set([coord[1] for coord in sorted_coords])
