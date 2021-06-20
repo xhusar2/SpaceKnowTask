@@ -52,10 +52,11 @@ class Client:
         }
         response = requests.post(self.AUTHENTICATE_URL, json=payload)
         self.token = response.json()['id_token']
-        print('Successfuly authentificated!')
+        print('Successfully authenticated!')
         return True
 
-    def get_extent(self, geojson_file):
+    @staticmethod
+    def get_extent(geojson_file):
         with open(geojson_file) as f:
             gj = geojson.load(f)
         return gj
@@ -89,8 +90,8 @@ class Client:
         # download geojson files for scene
         try:
             grid_tiles, map_id, identifier, image_type = self.download_grid_tiles_for_scene(scene,
-                                                                                        geojson_file, suffix_name,
-                                                                                        suffix_format, image_type)
+                                                                                            geojson_file, suffix_name,
+                                                                                            suffix_format, image_type)
         except Exception:
             print(f'Failed to detect objects for scene {scene}.')
             return None
@@ -105,7 +106,8 @@ class Client:
                 scene_objects_counter += self.count_objects(gj, image_type)
         return scene_objects_counter
 
-    def count_objects(self, gj, object_class):
+    @staticmethod
+    def count_objects(gj, object_class):
         total_object_count = 0
         if "features" in gj:
             for feature in gj["features"]:
@@ -132,8 +134,8 @@ class Client:
         return payload
 
     def run_pipeline(self, url, payload):
-        # TODO implement retrieval when cursor not null (concaternate to results)
-        # init
+        # TODO implement retrieval when cursor not null (concatenate to results)
+        # init pipeline
         response = requests.post(self.URL + url + '/initiate', json=payload, headers=self.get_headers())
         if response.status_code != 200:
             return None
@@ -154,23 +156,23 @@ class Client:
 
         if status == 'FAILED':
             log("Pipeline initialization failed!")
-            return None
         elif status == 'RESOLVED':
             # retrieve scenes
             result_scenes = json.loads(
                 requests.post(self.URL + url + '/retrieve', json={"pipelineId": pipeline_id},
                               headers=self.get_headers()).text)
-            log(f'Pipeline resolved successfuly!')
-            # TODO implement retrieval when cursor not null (concaternate to results)
+            log(f'Pipeline resolved successfully!')
+            return result_scenes
+            # TODO implement retrieval when cursor not null (concatenate to results)
         else:
             log("Unexpected status for pipeline.")
-        return result_scenes
+        return None
 
     # TODO cover exceptions - wrap into try block
     def find_scenes(self, time_range, geometry):
         pipeline_url = '/imagery/search'
         scenes = []
-        for provider,datasets in self.providers.items():
+        for provider, datasets in self.providers.items():
             for dataset in datasets:
                 payload = self.prepare_payload(geometry, time_range, provider, dataset)
                 print(f'Initializing pipeline to find scenes from provider {provider} and dataset {dataset}.')
@@ -187,7 +189,7 @@ class Client:
         return grid
 
     # TODO consider if saving is necessary
-    def dowload_and_save_tile(self, output_file_name, url):
+    def download_and_save_tile(self, output_file_name, url):
         # save image
         response = requests.get(url, headers=self.get_headers(), stream=True)
         if response.status_code == 200:
@@ -214,7 +216,7 @@ class Client:
         if grid == [] or grid is None:
             return None
         identifier = str(hash(grid['mapId']))[:10]
-        # download and save grid tiles then concaternate them into one big png
+        # download and save grid tiles then concatenate them into one big png
         for tile in grid['tiles']:
             str_coords = [str(coord) for coord in tile]
             kraken_grid_url = "/kraken/grid/"
@@ -224,11 +226,11 @@ class Client:
             imagery_filename = image_type + "_" + str.replace(grid['mapId'][:10], ".", "_") + "_" + \
                                identifier + "_" + "_".join(str_coords) + \
                                suffix_name + suffix_format
-            self.dowload_and_save_tile(imagery_filename, imagery_url)
+            self.download_and_save_tile(imagery_filename, imagery_url)
         # TODO for each band merge into one
         return grid['tiles'], grid['mapId'], identifier, image_type
 
-    # wrapper to download grid tiles and concaternate them into one
+    # wrapper to download grid tiles and concatenate them into one
     def recreate_image(self, scene, geojson_file, suffix_name, suffix_format, image_type="imagery"):
         recreated_image = None
         try:
@@ -246,7 +248,7 @@ class Client:
         rows = np.array_split(np.array(sorted_coords), len(row_coords))
         # create rows with images
         v_strips = []
-        # conceternate tiled into grid (verticaly first and horizontaly second)
+        # concetenate tiled into grid (vertically first and horizontally second)
         for row in rows:
             images = [self.get_tile_image(image_type, map_id, identifier, tile) for tile in row]
             v_strips.append(functools.reduce(lambda x, y: cv2.vconcat([x, y]), images))
@@ -256,20 +258,18 @@ class Client:
         os.mkdir(self.DOWNLOAD_FOLDER)
         return reconstructed_img
 
-coords = "over_brisbane_airport.geojson"
-time_range = ["2018-01-01 00:00:00", "2018-01-31 23:59:59"]
-# TODO make as input arguments (coords to path to GEOJson file)
-
 
 def main():
     image_type = 'cars'
     args = sys.argv[1:]
+    time_range = []
+    input_file = ""
     if len(args) == 3:
         input_file = args[0]
-        timerange = [args[1], args[2]]
+        time_range = [args[1], args[2]]
     elif len(args) == 4:
         input_file = args[0]
-        timerange = [args[1], args[2]]
+        time_range = [args[1], args[2]]
         image_type = args[3]
     else:
         print("Parameters for script: client.py <input_file> <timerange> [<image_type>]")
@@ -280,7 +280,7 @@ def main():
         exit(1)
     load_dotenv()
     client = Client(os.getenv("SPACEKNOW_EMAIL"), os.getenv("SPACEKNOW_PASSWORD"))
-    count = client.analyze_location(timerange, input_file, image_type)
+    count = client.analyze_location(time_range, input_file, image_type)
     print(f'Number of cars total in location for given timerange is {count}')
 
 
