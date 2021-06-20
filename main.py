@@ -10,8 +10,8 @@ time_range = ["2018-01-01 00:00:00", "2018-01-31 23:59:59"]
 def main():
     load_dotenv()
     client = Client(os.getenv("SPACEKNOW_EMAIL"), os.getenv("SPACEKNOW_PASSWORD") )
-    client.analyze_location(time_range, coords, 'cars')
-    # print(results)
+    count = client.analyze_location(time_range, coords, 'cars')
+    print(f'Number of cars total in location for given timerange is {count}')
 
 
 if __name__ == "__main__":

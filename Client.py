@@ -8,6 +8,13 @@ import cv2
 import numpy as np
 import functools
 
+DEBUG = False
+
+
+def log(msg):
+    if DEBUG:
+        print(msg)
+
 
 class Client:
     URL = 'https://api.spaceknow.com'
@@ -58,38 +65,45 @@ class Client:
     def analyze_location(self, time_range, geojson_file, image_type):
         scenes = self.find_scenes(time_range, geojson_file)
         total_detected_objects = 0
-        for scene in scenes:
+        for i, scene in enumerate(scenes):
             # TODO based on # of bands create PNG, for now suppose RGB + near-ir
-            suffix_name = "truecolor" if image_type == "imagery" else image_type
-            imagery_img = self.recreate_image(scene, geojson_file, suffix_name, ".png", "imagery")
-            detected_img = self.recreate_image(scene, geojson_file, suffix_name, ".png", image_type)
-            detected_objects = self.detect_objects(scene, geojson_file, "detections", ".geojson", image_type)
-            total_detected_objects += detected_objects
+            imagery_img = self.recreate_image(scene, geojson_file, "truecolor", ".png", "imagery")
+            detected_img = self.recreate_image(scene, geojson_file, image_type, ".png", image_type)
             # join images into one output
             added_image = cv2.addWeighted(imagery_img, 1, detected_img, 1, 0)
             timestr = time.strftime("%Y%m%d-%H%M%S")
             cv2.imwrite(f'output/output_{scene["sceneId"][:20]}_{timestr}.png', added_image)
+            # detect and count objects from scene
+            detected_objects = self.detect_objects(scene, geojson_file, "detections", ".geojson", image_type)
+            print(f'Number of objects of class "{image_type}" detected from scene #{i + 1}: {detected_objects}')
+            total_detected_objects += detected_objects
         return total_detected_objects
 
-    def detect_objects(self, scene, geojson_file, image_type):
+    def detect_objects(self, scene, geojson_file, suffix_name, suffix_format, image_type):
         scene_objects_counter = 0
         # download geojson files for scene
         grid_tiles, map_id, identifier, image_type = self.download_grid_tiles_for_scene(scene,
-                                                                                        geojson_file, "detections",
-                                                                                        ".geojson", image_type)
+                                                                                        geojson_file, suffix_name,
+                                                                                        suffix_format, image_type)
         # open each grid tile geojson file and count objects
         for tile in grid_tiles:
             str_coords = [str(coord) for coord in tile]
-            # TODO make constants from detection and .geojson
             file_name = image_type + "_" + str.replace(map_id[:10], ".", "_") + "_" + \
                         identifier + "_" + "_".join(str_coords) + \
-                        "detections" + ".geojson"
+                        suffix_name + suffix_format
             with open(os.path.join(self.DOWNLOAD_FOLDER, file_name))as f:
                 gj = geojson.load(f)
-                if "features" in gj and "properties" in gj["features"] and "class" in gj["features"]["properties"]:
-                    if image_type == gj["features"]["properties"]["class"] and "count" in gj["features"]["properties"]:
-                        scene_objects_counter += gj["features"]["properties"]["count"]
+                scene_objects_counter += self.count_objects(gj, image_type)
         return scene_objects_counter
+
+    def count_objects(self, gj, object_class):
+        total_object_count = 0
+        if "features" in gj:
+            for feature in gj["features"]:
+                if "properties" in feature and "class" in feature["properties"]:
+                    if object_class == feature["properties"]["class"] and "count" in feature["properties"]:
+                        total_object_count += feature["properties"]["count"]
+        return total_object_count
 
     # TODO sort out provider and dataset params better, add cursor
     def prepare_payload(self, geojson_file, time_range, provider='gbdx'):
@@ -117,26 +131,26 @@ class Client:
         # retrieve
         while status not in ['RESOLVED', 'FAILED']:
             # check status
-            print(f'Pipeline status: {status}')
+            log(f'Pipeline status: {status}')
             status_check_url = "/tasking/get-status"
-            print(f'Waiting {next_try} seconds...')
+            log(f'Waiting {next_try} seconds...')
             time.sleep(next_try)
             # TODO implement status_code check
             status = json.loads(requests.post(self.URL + status_check_url, json={"pipelineId": pipeline_id}).text)[
                 'status']
 
         if status == 'FAILED':
-            print("Pipeline initialization failed!")
+            log("Pipeline initialization failed!")
             return []
         elif status == 'RESOLVED':
             # retrieve scenes
             result_scenes = json.loads(
                 requests.post(self.URL + url + '/retrieve', json={"pipelineId": pipeline_id},
                               headers=self.get_headers()).text)
-            print(f'Pipeline resolved successfuly!')
+            log(f'Pipeline resolved successfuly!')
             # TODO implement retrieval when cursor not null (concaternate to results)
         else:
-            print("Unexpected status for pipeline.")
+            log("Unexpected status for pipeline.")
         return result_scenes
 
     # TODO cover exceptions - wrap into try block
@@ -150,7 +164,7 @@ class Client:
     def get_map(self, scene, geojson_file, map_type="imagery"):
         kraken_url = f'/kraken/release/{map_type}/geojson'
         payload = {"sceneId": scene['sceneId'], "extent": self.get_extent(geojson_file)}
-        print(f'Initializing pipeline for scene {scene["sceneId"]}')
+        log(f'Initializing pipeline for scene {scene["sceneId"]}')
         grid = self.run_pipeline(kraken_url, payload)
         return grid
 
@@ -162,10 +176,10 @@ class Client:
             with open(os.path.join(self.DOWNLOAD_FOLDER, output_file_name), 'wb') as out_file:
                 shutil.copyfileobj(response.raw, out_file)
             del response
-            print(f'File downloaded to {output_file_name}')
+            log(f'File downloaded to {output_file_name}')
             return True
         else:
-            print(f'File download failed for file from url {url}')
+            log(f'File download failed for file from url {url}')
             return False
 
     def get_tile_image(self, image_type, map_id, identifier, coords):
@@ -196,7 +210,8 @@ class Client:
 
     # wrapper to download grid tiles and concaternate them into one
     def recreate_image(self, scene, geojson_file, suffix_name, suffix_format, image_type="imagery"):
-        return self.concatenate_image(*self.download_grid_tiles_for_scene(scene, geojson_file, suffix_name, suffix_format, image_type))
+        return self.concatenate_image(
+            *self.download_grid_tiles_for_scene(scene, geojson_file, suffix_name, suffix_format, image_type))
 
     def concatenate_image(self, grid_tiles, map_id, identifier, image_type):
         # sort coordinates
@@ -210,9 +225,6 @@ class Client:
             images = [self.get_tile_image(image_type, map_id, identifier, tile) for tile in row]
             v_strips.append(functools.reduce(lambda x, y: cv2.vconcat([x, y]), images))
         reconstructed_img = functools.reduce(lambda x, y: cv2.hconcat([x, y]), v_strips)
-        # set background transparent
-        #cv2.imwrite(f'output/output_{image_type}_{str.replace(map_id[:10], ".", "_")}_{identifier}.png',
-        #            reconstructed_img, [int(cv2.IMWRITE_PNG_COMPRESSION), 9])
         # clean download folder
         shutil.rmtree(self.DOWNLOAD_FOLDER)
         os.mkdir(self.DOWNLOAD_FOLDER)
