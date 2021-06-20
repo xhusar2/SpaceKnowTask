@@ -7,6 +7,7 @@ import os
 import cv2
 import numpy as np
 import functools
+import yaml
 
 DEBUG = True
 
@@ -21,15 +22,12 @@ class Client:
     AUTHENTICATE_URL = 'https://spaceknow.auth0.com/oauth/ro'
     DOWNLOAD_FOLDER = 'download'
     OUTPUT_FOLDER = 'output'
-    providers = {"gbdx": ['preview-multispectral',
-                          'preview-swir', 'idaho-pansharpened',
-                          'idaho-swir', 'idaho-panchromatic'],
-                 "maxar": ['ard']
-                 }
+    providers = {}
     token = ''
 
     def __init__(self, email, password):
-        # take environment variables from .env.
+        with open("providers.yaml", "r") as ymlfile:
+            self.providers = yaml.load(ymlfile, Loader=yaml.FullLoader)
         try:
             self.authenticate(email, password)
         # TODO fix exception too broad
@@ -143,6 +141,7 @@ class Client:
             # check status
             log(f'Pipeline status: {status}')
             status_check_url = "/tasking/get-status"
+            # TODO implement final number of tries (e.g. 50)
             log(f'Waiting {next_try} seconds...')
             time.sleep(next_try)
             # TODO implement status_code check
@@ -172,7 +171,7 @@ class Client:
                 payload = self.prepare_payload(geometry, time_range, provider, dataset)
                 print(f'Initializing pipeline to find scenes from provider {provider} and dataset {dataset}.')
                 pipeline_result = self.run_pipeline(pipeline_url, payload)
-                if 'results' in pipeline_result:
+                if pipeline_result is not None and 'results' in pipeline_result:
                     scenes = scenes + pipeline_result['results']
         return scenes
 

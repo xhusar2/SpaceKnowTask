@@ -1,0 +1,36 @@
+gbdx:
+  - preview-multispectral
+  - preview-swir
+  - idaho-pansharpened
+  - idaho-swir
+  - idaho-panchromatic
+
+maxar:
+  - ard
+
+pl:
+  - PSOrthoTile
+  - PSOrthoTile_tile
+  - PSScene3Band
+  - PSScene3Band_tile
+  - PSScene4Band
+  - PSScene4Band_tile
+  - SkySatScene
+  - SkySatCollect
+  - SkySatCollect_pansharpened
+
+iceye:
+  - Spotlight_SLC
+  - SpotlightHigh_SLC
+  - Stripmap_SLC
+  - StripmapHigh_SLC
+
+ee:
+  - COPERNICUS/S1_GRD
+  - COPERNICUS/S2
+
+esa:
+  - COPERNICUS/S1_SLC
+
+noaa:
+  - VIIRS/Daily
