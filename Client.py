@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import functools
 
-DEBUG = False
+DEBUG = True
 
 
 def log(msg):
@@ -27,7 +27,6 @@ class Client:
                  "maxar": ['ard']
                  }
     token = ''
-    imagery_type = ['imagery']
 
     def __init__(self, email, password):
         # take environment variables from .env.
@@ -70,21 +69,29 @@ class Client:
             imagery_img = self.recreate_image(scene, geojson_file, "truecolor", ".png", "imagery")
             detected_img = self.recreate_image(scene, geojson_file, image_type, ".png", image_type)
             # join images into one output
-            added_image = cv2.addWeighted(imagery_img, 1, detected_img, 1, 0)
-            timestr = time.strftime("%Y%m%d-%H%M%S")
-            cv2.imwrite(f'output/output_{scene["sceneId"][:20]}_{timestr}.png', added_image)
+            if imagery_img is not None and detected_img is not None:
+                added_image = cv2.addWeighted(imagery_img, 1, detected_img, 1, 0)
+                timestr = time.strftime("%Y%m%d-%H%M%S")
+                cv2.imwrite(f'output/output_{scene["sceneId"][:20]}_{timestr}.png', added_image)
+            else:
+                print(f'Failed to process scene {scene}')
             # detect and count objects from scene
             detected_objects = self.detect_objects(scene, geojson_file, "detections", ".geojson", image_type)
-            print(f'Number of objects of class "{image_type}" detected from scene #{i + 1}: {detected_objects}')
-            total_detected_objects += detected_objects
+            if detected_objects is not None:
+                print(f'Number of objects of class "{image_type}" detected from scene #{i + 1}: {detected_objects}')
+                total_detected_objects += detected_objects
         return total_detected_objects
 
     def detect_objects(self, scene, geojson_file, suffix_name, suffix_format, image_type):
         scene_objects_counter = 0
         # download geojson files for scene
-        grid_tiles, map_id, identifier, image_type = self.download_grid_tiles_for_scene(scene,
+        try:
+            grid_tiles, map_id, identifier, image_type = self.download_grid_tiles_for_scene(scene,
                                                                                         geojson_file, suffix_name,
                                                                                         suffix_format, image_type)
+        except Exception:
+            print(f'Failed to detect objects for scene {scene}.')
+            return None
         # open each grid tile geojson file and count objects
         for tile in grid_tiles:
             str_coords = [str(coord) for coord in tile]
@@ -106,10 +113,10 @@ class Client:
         return total_object_count
 
     # TODO sort out provider and dataset params better, add cursor
-    def prepare_payload(self, geojson_file, time_range, provider='gbdx'):
+    def prepare_payload(self, geojson_file, time_range, provider, dataset):
         extent = self.get_extent(geojson_file)
         cursor = ''
-        dataset = self.providers[provider][2]
+        # dataset = self.providers[provider][2]
         start_datetime = time_range[0]
         end_datetime = time_range[1]
         payload = {"provider": provider,
@@ -125,8 +132,11 @@ class Client:
     def run_pipeline(self, url, payload):
         # TODO implement retrieval when cursor not null (concaternate to results)
         # init
-        response = json.loads(
-            requests.post(self.URL + url + '/initiate', json=payload, headers=self.get_headers()).text)
+        response = requests.post(self.URL + url + '/initiate', json=payload, headers=self.get_headers())
+        if response.status_code != 200:
+            return None
+
+        response = json.loads(response.text)
         next_try, pipeline_id, status = response['nextTry'], response['pipelineId'], response['status']
         # retrieve
         while status not in ['RESOLVED', 'FAILED']:
@@ -141,7 +151,7 @@ class Client:
 
         if status == 'FAILED':
             log("Pipeline initialization failed!")
-            return []
+            return None
         elif status == 'RESOLVED':
             # retrieve scenes
             result_scenes = json.loads(
@@ -156,9 +166,14 @@ class Client:
     # TODO cover exceptions - wrap into try block
     def find_scenes(self, time_range, geometry):
         pipeline_url = '/imagery/search'
-        payload = self.prepare_payload(geometry, time_range)
-        print('Initializing pipeline to find scenes.')
-        scenes = self.run_pipeline(pipeline_url, payload)['results']
+        scenes = []
+        for provider,datasets in self.providers.items():
+            for dataset in datasets:
+                payload = self.prepare_payload(geometry, time_range, provider, dataset)
+                print(f'Initializing pipeline to find scenes from provider {provider} and dataset {dataset}.')
+                pipeline_result = self.run_pipeline(pipeline_url, payload)
+                if 'results' in pipeline_result:
+                    scenes = scenes + pipeline_result['results']
         return scenes
 
     def get_map(self, scene, geojson_file, map_type="imagery"):
@@ -193,6 +208,8 @@ class Client:
     # TODO handle exceptions (file not saved/downloaded)
     def download_grid_tiles_for_scene(self, scene, geojson_file, suffix_name, suffix_format, image_type="imagery"):
         grid = self.get_map(scene, geojson_file, image_type)
+        if grid == [] or grid is None:
+            return None
         identifier = str(hash(grid['mapId']))[:10]
         # download and save grid tiles then concaternate them into one big png
         for tile in grid['tiles']:
@@ -210,8 +227,14 @@ class Client:
 
     # wrapper to download grid tiles and concaternate them into one
     def recreate_image(self, scene, geojson_file, suffix_name, suffix_format, image_type="imagery"):
-        return self.concatenate_image(
-            *self.download_grid_tiles_for_scene(scene, geojson_file, suffix_name, suffix_format, image_type))
+        recreated_image = None
+        try:
+            recreated_image = self.concatenate_image(
+                *self.download_grid_tiles_for_scene(scene, geojson_file, suffix_name, suffix_format, image_type))
+        except Exception:
+            # print(f'Failed to recreate image for scene {scene}')
+            pass
+        return recreated_image
 
     def concatenate_image(self, grid_tiles, map_id, identifier, image_type):
         # sort coordinates
