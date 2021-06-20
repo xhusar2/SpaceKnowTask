@@ -55,16 +55,41 @@ class Client:
     def get_headers(self):
         return {"Authorization": "Bearer " + self.token}
 
-    def analyze_location(self, time_range, geojson_file, map_type):
+    def analyze_location(self, time_range, geojson_file, image_type):
         scenes = self.find_scenes(time_range, geojson_file)
+        total_detected_objects = 0
         for scene in scenes:
             # TODO based on # of bands create PNG, for now suppose RGB + near-ir
-            imagery_img = self.recreate_image(scene, geojson_file, "imagery")
-            detected_img = self.recreate_image(scene, geojson_file, map_type)
+            suffix_name = "truecolor" if image_type == "imagery" else image_type
+            imagery_img = self.recreate_image(scene, geojson_file, suffix_name, ".png", "imagery")
+            detected_img = self.recreate_image(scene, geojson_file, suffix_name, ".png", image_type)
+            detected_objects = self.detect_objects(scene, geojson_file, "detections", ".geojson", image_type)
+            total_detected_objects += detected_objects
             # join images into one output
             added_image = cv2.addWeighted(imagery_img, 1, detected_img, 1, 0)
             timestr = time.strftime("%Y%m%d-%H%M%S")
             cv2.imwrite(f'output/output_{scene["sceneId"][:20]}_{timestr}.png', added_image)
+        return total_detected_objects
+
+    def detect_objects(self, scene, geojson_file, image_type):
+        scene_objects_counter = 0
+        # download geojson files for scene
+        grid_tiles, map_id, identifier, image_type = self.download_grid_tiles_for_scene(scene,
+                                                                                        geojson_file, "detections",
+                                                                                        ".geojson", image_type)
+        # open each grid tile geojson file and count objects
+        for tile in grid_tiles:
+            str_coords = [str(coord) for coord in tile]
+            # TODO make constants from detection and .geojson
+            file_name = image_type + "_" + str.replace(map_id[:10], ".", "_") + "_" + \
+                        identifier + "_" + "_".join(str_coords) + \
+                        "detections" + ".geojson"
+            with open(os.path.join(self.DOWNLOAD_FOLDER, file_name))as f:
+                gj = geojson.load(f)
+                if "features" in gj and "properties" in gj["features"] and "class" in gj["features"]["properties"]:
+                    if image_type == gj["features"]["properties"]["class"] and "count" in gj["features"]["properties"]:
+                        scene_objects_counter += gj["features"]["properties"]["count"]
+        return scene_objects_counter
 
     # TODO sort out provider and dataset params better, add cursor
     def prepare_payload(self, geojson_file, time_range, provider='gbdx'):
@@ -152,23 +177,26 @@ class Client:
         return cv2.imread(os.path.join(self.DOWNLOAD_FOLDER, img_file_name), cv2.IMREAD_UNCHANGED)
 
     # TODO handle exceptions (file not saved/downloaded)
-    def recreate_image(self, scene, geojson_file, image_type="imagery"):
+    def download_grid_tiles_for_scene(self, scene, geojson_file, suffix_name, suffix_format, image_type="imagery"):
         grid = self.get_map(scene, geojson_file, image_type)
         identifier = str(hash(grid['mapId']))[:10]
         # download and save grid tiles then concaternate them into one big png
         for tile in grid['tiles']:
             str_coords = [str(coord) for coord in tile]
             kraken_grid_url = "/kraken/grid/"
-            suffix_name = "truecolor" if image_type == "imagery" else image_type
             imagery_url = self.URL + kraken_grid_url + \
                           grid['mapId'] + '/-/' + '/'.join(str_coords) + \
-                          "/" + suffix_name + ".png"
+                          "/" + suffix_name + suffix_format
             imagery_filename = image_type + "_" + str.replace(grid['mapId'][:10], ".", "_") + "_" + \
                                identifier + "_" + "_".join(str_coords) + \
-                               suffix_name + ".png"
+                               suffix_name + suffix_format
             self.dowload_and_save_tile(imagery_filename, imagery_url)
         # TODO for each band merge into one
-        return self.concatenate_image(grid['tiles'], grid['mapId'], identifier, image_type)
+        return grid['tiles'], grid['mapId'], identifier, image_type
+
+    # wrapper to download grid tiles and concaternate them into one
+    def recreate_image(self, scene, geojson_file, suffix_name, suffix_format, image_type="imagery"):
+        return self.concatenate_image(*self.download_grid_tiles_for_scene(scene, geojson_file, suffix_name, suffix_format, image_type))
 
     def concatenate_image(self, grid_tiles, map_id, identifier, image_type):
         # sort coordinates
