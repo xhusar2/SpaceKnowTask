@@ -9,9 +9,8 @@ time_range = ["2018-01-01 00:00:00", "2018-01-31 23:59:59"]
 def main():
     load_dotenv()
     client = Client(os.getenv("SPACEKNOW_EMAIL"), os.getenv("SPACEKNOW_PASSWORD") )
-    scenes = client.find_scenes(time_range, coords)
-    results = client.analyze_images(scenes, coords)
-    print(results)
+    client.analyze_location(time_range, coords, ['cars'])
+    # print(results)
 
 
 
