@@ -141,11 +141,9 @@ class Client:
                         total_object_count += feature["properties"]["count"]
         return total_object_count
 
-    # TODO sort out provider and dataset params better, add cursor
     def prepare_payload(self, geojson_file, time_range, provider, dataset):
         extent = self.get_extent(geojson_file)
         cursor = ''
-        # dataset = self.providers[provider][2]
         start_datetime = time_range[0]
         end_datetime = time_range[1]
         payload = {"provider": provider,
@@ -155,7 +153,6 @@ class Client:
                    "extent": extent}
         if cursor != '':
             payload['cursor'] = cursor
-        # print(geojson.dumps(payload, indent=4))
         return payload
 
     def run_pipeline(self, url, payload):
@@ -167,17 +164,19 @@ class Client:
 
         response = json.loads(response.text)
         next_try, pipeline_id, status = response['nextTry'], response['pipelineId'], response['status']
-        # retrieve
-        while status not in ['RESOLVED', 'FAILED']:
+        wait_counter = 0
+        while status not in ['RESOLVED', 'FAILED'] and wait_counter < 30:
+            wait_counter += 1
             # check status
             log(f'Pipeline status: {status}')
             status_check_url = "/tasking/get-status"
-            # TODO implement final number of tries (e.g. 50)
             log(f'Waiting {next_try} seconds...')
             time.sleep(next_try)
-            # TODO implement status_code check
-            status = json.loads(requests.post(self.URL + status_check_url, json={"pipelineId": pipeline_id}).text)[
-                'status']
+            response = requests.post(self.URL + status_check_url, json={"pipelineId": pipeline_id})
+            if response.status_code == 200:
+                status = json.loads(response.text)['status']
+            else:
+                status = "FAILED"
 
         if status == 'FAILED':
             log("Pipeline initialization failed!")
@@ -193,7 +192,6 @@ class Client:
             log("Unexpected status for pipeline.")
         return None
 
-    # TODO cover exceptions - wrap into try block
     def find_scenes(self, time_range, geometry):
         pipeline_url = '/imagery/search'
         scenes = []
@@ -241,7 +239,7 @@ class Client:
         if grid == [] or grid is None:
             return None
         identifier = str(hash(grid['mapId']))[:10]
-        # download and save grid tiles then concatenate them into one big png
+        # download and save grid tiles
         for tile in grid['tiles']:
             str_coords = [str(coord) for coord in tile]
             kraken_grid_url = "/kraken/grid/"
@@ -252,7 +250,6 @@ class Client:
                                identifier + "_" + "_".join(str_coords) + \
                                suffix_name + suffix_format
             self.download_and_save_tile(imagery_filename, imagery_url)
-        # TODO for each band merge into one
         return grid['tiles'], grid['mapId'], identifier, image_type
 
     # wrapper to download grid tiles and concatenate them into one
